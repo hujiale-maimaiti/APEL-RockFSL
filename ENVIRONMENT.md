@@ -14,8 +14,8 @@ The code was verified with the following local environment:
 Using Conda:
 
 ```bash
-conda create -n purle-rockfsl python=3.9 -y
-conda activate purle-rockfsl
+conda create -n paum-rockfsl python=3.9 -y
+conda activate paum-rockfsl
 ```
 
 Alternatively, using `venv` on Windows:
@@ -47,7 +47,7 @@ The `--device cpu` option can be used for functional checks, but formal training
 ## 3. Verify the installation
 
 ```bash
-python -c "import torch, torchvision; import purle_rock_fsl; print(torch.__version__, torchvision.__version__, torch.cuda.is_available())"
+python -c "import torch, torchvision; import paum_rock_fsl; print(torch.__version__, torchvision.__version__, torch.cuda.is_available())"
 ```
 
-Run all commands from the repository root so that `purle_rock_fsl` can be imported without an additional installation step.
+Run all commands from the repository root so that `paum_rock_fsl` can be imported without an additional installation step.

@@ -16,7 +16,7 @@ class FGKMultiScaleResNet18Backbone(FGKMiniResNet18Backbone):
     """FGK ResNet18 with an opt-in multi-scale feature-map interface.
 
     The default ``forward`` path remains identical to the frozen baseline.
-    PURLE-RockFSL uses ``forward_multiscale`` to retain layer3 local detail while
+    PAUM-RockFSL uses ``forward_multiscale`` to retain layer3 local detail while
     preserving the original layer4 map consumed by TDPF and CUPM.
     """
 

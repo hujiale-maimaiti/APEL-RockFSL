@@ -15,10 +15,10 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from purle_rock_fsl.base_fusion_model import ShotAwareReliabilityConstrainedFusion
-from purle_rock_fsl.dataset import NJURockPairDataset
-from purle_rock_fsl.deterministic_episode_sampler import DeterministicEpisodeSampler
-from purle_rock_fsl.resnet_backbone import (
+from paum_rock_fsl.base_fusion_model import ShotAwareReliabilityConstrainedFusion
+from paum_rock_fsl.dataset import NJURockPairDataset
+from paum_rock_fsl.deterministic_episode_sampler import DeterministicEpisodeSampler
+from paum_rock_fsl.resnet_backbone import (
     FGKMiniResNet18Backbone,
     load_fgk_resnet18_backbone,
 )

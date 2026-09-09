@@ -1,10 +1,10 @@
-# PURLE-RockFSL
+# PAUM-RockFSL
 
 ## Repository structure
 
 ```text
-PURLE_RockFSL_GitHub/
-├── purle_rock_fsl/
+PAUM_RockFSL_GitHub/
+├── paum_rock_fsl/
 ├── train_model.py
 ├── run_5way_1shot.py
 ├── run_5way_5shot.py

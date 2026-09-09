@@ -1,4 +1,4 @@
-"""PURLE-ARRC few-shot rock thin-section classification package."""
+"""PAUM few-shot rock thin-section classification package."""
 
 from .paired_dataset import NJURockSynchronizedPairDataset
 from .paired_transforms import SynchronizedPairTransform
@@ -32,8 +32,8 @@ from .relation_head import (
     RelationLogitsOutput,
 )
 from .relation_expert import (
-    PURLELocalRelationExpert,
-    PURLERelationExpertOutput,
+    PAUMLocalRelationExpert,
+    PAUMRelationExpertOutput,
 )
 from .support_reliability import (
     SupportCrossFitFold,
@@ -47,16 +47,16 @@ from .evidence_fusion import (
     EvidenceFusionOutput,
 )
 from .configuration import ARRCConfig
-from .model import PURLEARRCModel
+from .model import PAUMARRCModel
 from .baseline_adapter import (
-    PURLEFrozenSRCF,
-    PURLEPreparedEpisode,
+    PAUMFrozenSRCF,
+    PAUMPreparedEpisode,
     crossfit_base_support,
     fixed_fusion_logits_for_indices,
-    load_purle_frozen_srcf,
-    prepare_purle_episode,
+    load_paum_frozen_srcf,
+    prepare_paum_episode,
 )
-from .runtime import PURLEEpisodeOutput, run_purle_episode
+from .runtime import PAUMEpisodeOutput, run_paum_episode
 from .losses import (
     ComplementaryFusionLoss,
     ComplementaryLossOutput,
@@ -76,13 +76,13 @@ __all__ = [
     "LocalDescriptorStreams",
     "MultiScaleFeatureMaps",
     "NJURockSynchronizedPairDataset",
-    "PURLELocalRelationExpert",
-    "PURLEARRCModel",
+    "PAUMLocalRelationExpert",
+    "PAUMARRCModel",
     "ARRCConfig",
-    "PURLEFrozenSRCF",
-    "PURLEPreparedEpisode",
-    "PURLEEpisodeOutput",
-    "PURLERelationExpertOutput",
+    "PAUMFrozenSRCF",
+    "PAUMPreparedEpisode",
+    "PAUMEpisodeOutput",
+    "PAUMRelationExpertOutput",
     "EvidenceFusionOutput",
     "SelectedQueryDescriptors",
     "SupportCrossFitFold",
@@ -98,7 +98,7 @@ __all__ = [
     "balanced_leave_one_shot_out",
     "crossfit_base_support",
     "fixed_fusion_logits_for_indices",
-    "load_purle_frozen_srcf",
-    "prepare_purle_episode",
-    "run_purle_episode",
+    "load_paum_frozen_srcf",
+    "prepare_paum_episode",
+    "run_paum_episode",
 ]

@@ -22,7 +22,7 @@ from .utils import load_checkpoint
 
 @dataclass(frozen=True)
 class BaselineEpisode:
-    """Frozen base-model evidence exposed to the PURLE relation expert."""
+    """Frozen base-model evidence exposed to the PAUM relation expert."""
 
     classes: torch.Tensor
     support_indices: tuple[torch.Tensor, ...]
@@ -153,7 +153,7 @@ def load_frozen_base_model(
     checkpoint = load_checkpoint(checkpoint_path, map_location=device)
     if checkpoint.get("model") != "SRCF_TDPF_CUPM":
         raise RuntimeError(
-            "PURLE requires SRCF_TDPF_CUPM, got {!r}".format(
+            "PAUM requires SRCF_TDPF_CUPM, got {!r}".format(
                 checkpoint.get("model")
             )
         )
@@ -252,29 +252,29 @@ def extract_baseline_episode(
 
 
 @dataclass(frozen=True)
-class PURLEFrozenSRCF:
+class PAUMFrozenSRCF:
     backbone: FGKMultiScaleResNet18Backbone
     module: ShotAwareReliabilityConstrainedFusion
     checkpoint: dict[str, Any]
 
 
 @dataclass(frozen=True)
-class PURLEPreparedEpisode:
+class PAUMPreparedEpisode:
     baseline: BaselineEpisode
     ppl_features: MultiScaleFeatureMaps
     xpl_features: MultiScaleFeatureMaps
 
 
-def load_purle_frozen_srcf(
+def load_paum_frozen_srcf(
     checkpoint_path: str | Path, *, device: torch.device
-) -> PURLEFrozenSRCF:
+) -> PAUMFrozenSRCF:
     source = load_frozen_base_model(checkpoint_path, device=device)
     backbone = FGKMultiScaleResNet18Backbone().to(device)
     backbone.load_state_dict(source.backbone.state_dict(), strict=True)
     backbone.eval()
     for parameter in backbone.parameters():
         parameter.requires_grad_(False)
-    return PURLEFrozenSRCF(
+    return PAUMFrozenSRCF(
         backbone=backbone,
         module=source.module,
         checkpoint=source.checkpoint,
@@ -282,12 +282,12 @@ def load_purle_frozen_srcf(
 
 
 @torch.no_grad()
-def prepare_purle_episode(
-    frozen: PURLEFrozenSRCF,
+def prepare_paum_episode(
+    frozen: PAUMFrozenSRCF,
     images: torch.Tensor,
     labels: torch.Tensor,
     shots: int,
-) -> PURLEPreparedEpisode:
+) -> PAUMPreparedEpisode:
     ppl_features = frozen.backbone.forward_multiscale(images[:, 3:6])
     xpl_features = frozen.backbone.forward_multiscale(images[:, 0:3])
     baseline = extract_baseline_episode(
@@ -297,7 +297,7 @@ def prepare_purle_episode(
         labels,
         shots,
     )
-    return PURLEPreparedEpisode(
+    return PAUMPreparedEpisode(
         baseline=baseline,
         ppl_features=ppl_features,
         xpl_features=xpl_features,

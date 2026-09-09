@@ -15,17 +15,17 @@ from torch.utils.data import DataLoader
 from . import (
     ARRCConfig,
     NJURockSynchronizedPairDataset,
-    PURLEARRCModel,
+    PAUMARRCModel,
     SynchronizedPairTransform,
-    load_purle_frozen_srcf,
-    run_purle_episode,
+    load_paum_frozen_srcf,
+    run_paum_episode,
 )
 from .fixed_episode_sampler import FixedEpisodeBatchSampler
 from .utils import load_checkpoint, seed_everything, seed_worker
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate a fixed PURLE-RockFSL checkpoint")
+    parser = argparse.ArgumentParser(description="Evaluate a fixed PAUM-RockFSL checkpoint")
     parser.add_argument("--dataset_root", required=True)
     parser.add_argument("--base_checkpoint", required=True)
     parser.add_argument("--arrc_checkpoint", required=True)
@@ -177,8 +177,8 @@ def main():
     base_path = Path(args.base_checkpoint).resolve()
     arrc_path = Path(args.arrc_checkpoint).resolve()
     checkpoint = load_checkpoint(arrc_path, map_location=device)
-    if checkpoint.get("model") not in {"PURLE_ROCK_FSL", "PURLE_ARRC_V1"}:
-        raise RuntimeError("not a PURLE-RockFSL checkpoint")
+    if "arrc" not in checkpoint:
+        raise RuntimeError("not a PAUM-RockFSL checkpoint")
     if checkpoint.get("base_checkpoint_sha256") != file_sha256(base_path):
         raise RuntimeError("base checkpoint hash does not match ARRC training")
     gate_path = arrc_path.parent / "go_no_go.json"
@@ -218,9 +218,9 @@ def main():
     ) != (args.ways, args.shots):
         raise RuntimeError("ARRC checkpoint protocol differs from requested test")
 
-    frozen = load_purle_frozen_srcf(base_path, device=device)
+    frozen = load_paum_frozen_srcf(base_path, device=device)
     config = ARRCConfig(**checkpoint["arrc_config"])
-    model = PURLEARRCModel(config).to(device)
+    model = PAUMARRCModel(config).to(device)
     model.load_state_dict(checkpoint["arrc"], strict=True)
     model.eval()
     dataset = NJURockSynchronizedPairDataset(
@@ -327,7 +327,7 @@ def main():
         for episode_id, (images, labels) in enumerate(loader):
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
-            output = run_purle_episode(
+            output = run_paum_episode(
                 frozen,
                 model,
                 images,
@@ -494,7 +494,7 @@ def main():
         ),
     }
     summary = {
-        "model": "PURLE_ROCK_FSL",
+        "model": "PAUM_ROCK_FSL",
         "display_model": "ProtoNet-TDPF-CUPM-ARRC",
         "ways": args.ways,
         "shots": args.shots,

@@ -10,7 +10,7 @@ from .evidence_fusion import AsymmetricRescueRiskFusion
 from .local_descriptors import DualStreamLocalDescriptor
 from .losses import ComplementaryFusionLoss
 from .multiscale_backbone import MultiScaleFeatureMaps
-from .relation_expert import PURLELocalRelationExpert
+from .relation_expert import PAUMLocalRelationExpert
 from .support_reliability import SupportReliabilityEstimator
 from .support_reliability import (
     SupportCrossFitLogits,
@@ -18,8 +18,8 @@ from .support_reliability import (
 )
 
 
-class PURLEARRCModel(nn.Module):
-    """PURLE relation expert with an asymmetric rescue-risk controller."""
+class PAUMARRCModel(nn.Module):
+    """PAUM relation expert with an asymmetric rescue-risk controller."""
 
     def __init__(self, config: ARRCConfig):
         super().__init__()
@@ -29,7 +29,7 @@ class PURLEARRCModel(nn.Module):
             fisher_rank=config.fisher_rank,
             semantic_scale=config.semantic_scale,
         )
-        self.relation_expert = PURLELocalRelationExpert(
+        self.relation_expert = PAUMLocalRelationExpert(
             prototype_count=config.prototype_count,
             selected_support_descriptors=config.selected_support_descriptors,
             selected_query_descriptors=config.selected_query_descriptors,

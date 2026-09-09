@@ -18,10 +18,10 @@ from torch.utils.data import DataLoader
 from . import (
     ARRCConfig,
     NJURockSynchronizedPairDataset,
-    PURLEARRCModel,
+    PAUMARRCModel,
     SynchronizedPairTransform,
-    load_purle_frozen_srcf,
-    run_purle_episode,
+    load_paum_frozen_srcf,
+    run_paum_episode,
 )
 from .fixed_episode_sampler import FixedEpisodeBatchSampler
 from .utils import seed_everything, seed_worker
@@ -29,7 +29,7 @@ from .utils import seed_everything, seed_worker
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train PURLE-RockFSL around a frozen SRCF checkpoint"
+        description="Train PAUM-RockFSL around a frozen SRCF checkpoint"
     )
     parser.add_argument("--dataset_root", required=True)
     parser.add_argument("--base_checkpoint", required=True)
@@ -461,7 +461,7 @@ def evaluate(loader, frozen, model, device, shots, description):
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
-        output = run_purle_episode(frozen, model, images, labels, shots)
+        output = run_paum_episode(frozen, model, images, labels, shots)
         losses.append(float(output.loss.loss))
         for key, value in summarize_episode(output).items():
             totals[key] += value
@@ -505,11 +505,11 @@ def main():
     )]
     existing = [path.name for path in expected if path.exists()]
     if existing:
-        raise FileExistsError("refusing to overwrite PURLE outputs: " + ", ".join(existing))
+        raise FileExistsError("refusing to overwrite PAUM outputs: " + ", ".join(existing))
     root.mkdir(parents=True, exist_ok=True)
 
     base_path = Path(args.base_checkpoint).resolve()
-    frozen = load_purle_frozen_srcf(base_path, device=device)
+    frozen = load_paum_frozen_srcf(base_path, device=device)
     trained = frozen.checkpoint.get("config", {})
     trained_protocol = (
         int(trained.get("classes_per_it_val", args.ways)),
@@ -523,7 +523,7 @@ def main():
         )
 
     config = ARRCConfig(residual_logit_cap=args.residual_logit_cap)
-    model = PURLEARRCModel(config).to(device)
+    model = PAUMARRCModel(config).to(device)
     optimizer = optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -558,7 +558,7 @@ def main():
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
-            output = run_purle_episode(
+            output = run_paum_episode(
                 frozen,
                 model,
                 images,
@@ -589,7 +589,7 @@ def main():
             model,
             device,
             args.shots,
-            "PURLE val-A",
+            "PAUM val-A",
         )
         row = {
             "epoch": epoch,
@@ -630,7 +630,7 @@ def main():
             model,
             device,
             args.shots,
-            "PURLE {}".format(name),
+            "PAUM {}".format(name),
         )
         for name, loader in val_loaders.items()
         if name.startswith("val_gate_")
@@ -638,7 +638,7 @@ def main():
     go_no_go = build_go_no_go(args, gate_validation_metrics)
     base_hash = file_sha256(base_path)
     payload = {
-        "model": "PURLE_ROCK_FSL",
+        "model": "PAUM_ROCK_FSL",
         "checkpoint_role": "best",
         "arrc": best_state,
         "arrc_config": asdict(config),
@@ -652,7 +652,7 @@ def main():
     }
     torch.save(payload, root / "best_model.pth")
     torch.save({
-        "model": "PURLE_ROCK_FSL",
+        "model": "PAUM_ROCK_FSL",
         "checkpoint_role": "last_unselected",
         "arrc": last_state,
         "arrc_config": asdict(config),
@@ -672,7 +672,7 @@ def main():
             "balanced leave-one-shot-out episode- and class-level "
             "continuous NLL"
         ),
-        "leakage_control": "fold-specific TDPF and PURLE support-conditioned encoding",
+        "leakage_control": "fold-specific TDPF and PAUM support-conditioned encoding",
         "gate_validation_metrics": gate_validation_metrics,
     }, indent=2), encoding="utf-8")
     (root / "go_no_go.json").write_text(

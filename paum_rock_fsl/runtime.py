@@ -5,39 +5,39 @@ from typing import NamedTuple
 import torch
 
 from .baseline_adapter import (
-    PURLEFrozenSRCF,
-    PURLEPreparedEpisode,
+    PAUMFrozenSRCF,
+    PAUMPreparedEpisode,
     crossfit_base_support,
-    prepare_purle_episode,
+    prepare_paum_episode,
 )
 from .evidence_fusion import EvidenceFusionOutput
 from .local_descriptors import LocalDescriptorStreams
 from .losses import ComplementaryLossOutput
-from .model import PURLEARRCModel
-from .relation_expert import PURLERelationExpertOutput
+from .model import PAUMARRCModel
+from .relation_expert import PAUMRelationExpertOutput
 from .support_reliability import SupportReliabilitySummary
 
 
-class PURLEEpisodeOutput(NamedTuple):
-    prepared: PURLEPreparedEpisode
+class PAUMEpisodeOutput(NamedTuple):
+    prepared: PAUMPreparedEpisode
     descriptors: LocalDescriptorStreams
-    relation: PURLERelationExpertOutput
+    relation: PAUMRelationExpertOutput
     support_reliability: SupportReliabilitySummary
     fusion: EvidenceFusionOutput
     loss: ComplementaryLossOutput | None
 
 
-def run_purle_episode(
-    frozen: PURLEFrozenSRCF,
-    model: PURLEARRCModel,
+def run_paum_episode(
+    frozen: PAUMFrozenSRCF,
+    model: PAUMARRCModel,
     images: torch.Tensor,
     labels: torch.Tensor,
     shots: int,
     *,
     compute_support_reliability: bool = True,
     compute_loss: bool = True,
-) -> PURLEEpisodeOutput:
-    prepared = prepare_purle_episode(frozen, images, labels, shots)
+) -> PAUMEpisodeOutput:
+    prepared = prepare_paum_episode(frozen, images, labels, shots)
     baseline = prepared.baseline
     descriptors = model.encode_descriptors(
         prepared.ppl_features,
@@ -82,7 +82,7 @@ def run_purle_episode(
         model.loss_function(fusion, baseline.query_targets)
         if compute_loss else None
     )
-    return PURLEEpisodeOutput(
+    return PAUMEpisodeOutput(
         prepared=prepared,
         descriptors=descriptors,
         relation=relation,
