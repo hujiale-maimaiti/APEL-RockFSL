@@ -9,7 +9,9 @@ PAUM_RockFSL_GitHub/
 ├── run_5way_1shot.py
 ├── run_5way_5shot.py
 ├── requirements.txt
-└── ENVIRONMENT.md
+├── DATASET.md
+├── ENVIRONMENT.md
+└── LICENSE
 ```
 
 ## Dataset layout
