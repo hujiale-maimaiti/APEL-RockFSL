@@ -9,7 +9,7 @@ from torch.nn import functional as F
 
 
 class ShotAwareReliabilityConstrainedFusion(nn.Module):
-    """TDPF/CUPM experts with a bounded, shot-aware cooperative router.
+    """TAPF/RAPM experts with a bounded, shot-aware cooperative router.
 
     The fixed D1 shot prior remains the centre of every prediction.  A tiny
     router may only apply a reliability-scaled residual inside a narrow band,
@@ -26,7 +26,7 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         router_hidden=16,
         min_variance=0.02,
         max_variance=5.0,
-        cupm_temperature=10.0,
+        rapm_temperature=10.0,
         branch_loss_weight=0.5,
         router_loss_weight=0.10,
         prior_loss_weight=0.02,
@@ -51,11 +51,11 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         self.eps = float(eps)
         self.pool = nn.AdaptiveAvgPool2d(1)
 
-        # Separate projections are intentional: CUPM never receives a
-        # TDPF-modified embedding, so both standalone expert paths survive.
-        self.tdpf_projection = nn.Linear(in_channels, embedding_dim)
-        self.cupm_projection = nn.Linear(in_channels, embedding_dim)
-        for projection in (self.tdpf_projection, self.cupm_projection):
+        # Separate projections are intentional: RAPM never receives a
+        # TAPF-modified embedding, so both standalone expert paths survive.
+        self.tapf_projection = nn.Linear(in_channels, embedding_dim)
+        self.rapm_projection = nn.Linear(in_channels, embedding_dim)
+        for projection in (self.tapf_projection, self.rapm_projection):
             nn.init.trunc_normal_(projection.weight, std=0.02)
             nn.init.zeros_(projection.bias)
 
@@ -90,9 +90,9 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         nn.init.zeros_(self.uncertainty_head[-1].weight)
         nn.init.constant_(self.uncertainty_head[-1].bias, -2.0)
 
-        self.log_tdpf_temperature = nn.Parameter(torch.tensor(0.0))
-        self.log_cupm_temperature = nn.Parameter(
-            torch.tensor(math.log(cupm_temperature), dtype=torch.float32)
+        self.log_tapf_temperature = nn.Parameter(torch.tensor(0.0))
+        self.log_rapm_temperature = nn.Parameter(
+            torch.tensor(math.log(rapm_temperature), dtype=torch.float32)
         )
 
         # Router inputs: two entropy values, two margins, prediction
@@ -169,21 +169,21 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
             + self.delta_scale * polarization_delta
             + self.interaction_scale * interaction
         )
-        tdpf_embedding = self.tdpf_projection(
+        tapf_embedding = self.tapf_projection(
             self.pool(fused_map).flatten(1)
         )
 
-        ppl_embedding = self.cupm_projection(self.pool(ppl_map).flatten(1))
-        xpl_embedding = self.cupm_projection(self.pool(xpl_map).flatten(1))
-        cupm_embedding = 0.5 * (ppl_embedding + xpl_embedding)
+        ppl_embedding = self.rapm_projection(self.pool(ppl_map).flatten(1))
+        xpl_embedding = self.rapm_projection(self.pool(xpl_map).flatten(1))
+        rapm_embedding = 0.5 * (ppl_embedding + xpl_embedding)
         evidence = torch.abs(ppl_embedding - xpl_embedding)
         variance = self.min_variance + F.softplus(
             self.uncertainty_head(evidence)
         )
         variance = variance.clamp(max=self.max_variance)
         return {
-            "tdpf": tdpf_embedding,
-            "cupm": cupm_embedding,
+            "tapf": tapf_embedding,
+            "rapm": rapm_embedding,
             "variance": variance,
             "ppl": ppl_embedding,
             "xpl": xpl_embedding,
@@ -197,7 +197,7 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         query_index = torch.cat(query_indices)
         query = embedding[query_index]
         distance = (query.unsqueeze(1) - prototypes.unsqueeze(0)).pow(2).sum(-1)
-        temperature = self.log_tdpf_temperature.exp().clamp(0.25, 20.0)
+        temperature = self.log_tapf_temperature.exp().clamp(0.25, 20.0)
         return -temperature * distance
 
     def _uncertainty_logits(
@@ -234,7 +234,7 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         distance = 0.5 * (
             squared_error / pair_variance + torch.log(pair_variance)
         ).mean(-1)
-        temperature = self.log_cupm_temperature.exp().clamp(1.0, 50.0)
+        temperature = self.log_rapm_temperature.exp().clamp(1.0, 50.0)
         return -temperature * distance
 
     @staticmethod
@@ -258,41 +258,41 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
 
     def _router_features(
         self,
-        tdpf_logits,
-        cupm_logits,
+        tapf_logits,
+        rapm_logits,
         encoded,
         support_indices,
         query_indices,
         n_support,
     ):
-        tdpf_probability = F.softmax(tdpf_logits, dim=1)
-        cupm_probability = F.softmax(cupm_logits, dim=1)
-        tdpf_entropy, tdpf_margin = self._entropy_and_margin(tdpf_probability)
-        cupm_entropy, cupm_margin = self._entropy_and_margin(cupm_probability)
+        tapf_probability = F.softmax(tapf_logits, dim=1)
+        rapm_probability = F.softmax(rapm_logits, dim=1)
+        tapf_entropy, tapf_margin = self._entropy_and_margin(tapf_probability)
+        rapm_entropy, rapm_margin = self._entropy_and_margin(rapm_probability)
         disagreement = (
-            tdpf_probability.argmax(1) != cupm_probability.argmax(1)
+            tapf_probability.argmax(1) != rapm_probability.argmax(1)
         ).float()
-        mixture = 0.5 * (tdpf_probability + cupm_probability)
+        mixture = 0.5 * (tapf_probability + rapm_probability)
         js = 0.5 * (
-            F.kl_div(mixture.clamp_min(self.eps).log(), tdpf_probability, reduction="none").sum(1)
-            + F.kl_div(mixture.clamp_min(self.eps).log(), cupm_probability, reduction="none").sum(1)
+            F.kl_div(mixture.clamp_min(self.eps).log(), tapf_probability, reduction="none").sum(1)
+            + F.kl_div(mixture.clamp_min(self.eps).log(), rapm_probability, reduction="none").sum(1)
         )
         query_index = torch.cat(query_indices)
         view_agreement = F.cosine_similarity(
             encoded["ppl"][query_index], encoded["xpl"][query_index], dim=1
         )
         support_compactness = self._support_compactness(
-            encoded["cupm"], support_indices
+            encoded["rapm"], support_indices
         ).expand_as(view_agreement)
         normalized_shot = view_agreement.new_full(
             view_agreement.shape, min(float(n_support) / 5.0, 1.0)
         )
         return torch.stack(
             [
-                tdpf_entropy,
-                cupm_entropy,
-                tdpf_margin,
-                cupm_margin,
+                tapf_entropy,
+                rapm_entropy,
+                tapf_margin,
+                rapm_margin,
                 disagreement,
                 js,
                 view_agreement,
@@ -304,7 +304,7 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
 
     @staticmethod
     def _shot_prior(n_support):
-        # TDPF is the stable prior in 1-shot; CUPM receives more weight once
+        # TAPF is the stable prior in 1-shot; RAPM receives more weight once
         # several support examples make its class-variance estimate reliable.
         return 0.25 if n_support <= 1 else 0.65
 
@@ -341,17 +341,17 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         )
         query_targets = torch.cat(query_targets)
         encoded = self._encode_experts(ppl_map, xpl_map, support_indices)
-        tdpf_logits = self._euclidean_logits(
-            encoded["tdpf"], support_indices, query_indices
+        tapf_logits = self._euclidean_logits(
+            encoded["tapf"], support_indices, query_indices
         )
-        cupm_logits = self._uncertainty_logits(
-            encoded["cupm"], encoded["variance"], support_indices, query_indices
+        rapm_logits = self._uncertainty_logits(
+            encoded["rapm"], encoded["variance"], support_indices, query_indices
         )
-        tdpf_probability = F.softmax(tdpf_logits, dim=1)
-        cupm_probability = F.softmax(cupm_logits, dim=1)
+        tapf_probability = F.softmax(tapf_logits, dim=1)
+        rapm_probability = F.softmax(rapm_logits, dim=1)
         features = self._router_features(
-            tdpf_logits,
-            cupm_logits,
+            tapf_logits,
+            rapm_logits,
             encoded,
             support_indices,
             query_indices,
@@ -371,18 +371,18 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
             self._shot_prior(n_support) + radius,
         )
         fused_probability = (
-            (1.0 - alpha.unsqueeze(1)) * tdpf_probability
-            + alpha.unsqueeze(1) * cupm_probability
+            (1.0 - alpha.unsqueeze(1)) * tapf_probability
+            + alpha.unsqueeze(1) * rapm_probability
         ).clamp_min(self.eps)
         fused_logits = fused_probability.log()
 
         fused_loss = F.nll_loss(fused_logits, query_targets)
-        tdpf_loss = F.cross_entropy(tdpf_logits, query_targets)
-        cupm_loss = F.cross_entropy(cupm_logits, query_targets)
-        tdpf_nll = F.cross_entropy(tdpf_logits, query_targets, reduction="none")
-        cupm_nll = F.cross_entropy(cupm_logits, query_targets, reduction="none")
+        tapf_loss = F.cross_entropy(tapf_logits, query_targets)
+        rapm_loss = F.cross_entropy(rapm_logits, query_targets)
+        tapf_nll = F.cross_entropy(tapf_logits, query_targets, reduction="none")
+        rapm_nll = F.cross_entropy(rapm_logits, query_targets, reduction="none")
         preference = torch.tanh(
-            (tdpf_nll.detach() - cupm_nll.detach()) / 0.25
+            (tapf_nll.detach() - rapm_nll.detach()) / 0.25
         )
         route_target = (prior + radius * preference).clamp(
             self._shot_prior(n_support) - radius,
@@ -393,35 +393,35 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
         fused_nll = F.nll_loss(
             fused_logits, query_targets, reduction="none"
         )
-        oracle_branch_nll = torch.minimum(tdpf_nll, cupm_nll).detach()
+        oracle_branch_nll = torch.minimum(tapf_nll, rapm_nll).detach()
         regret_loss = F.relu(fused_nll - oracle_branch_nll).mean()
         total_loss = (
             fused_loss
-            + self.branch_loss_weight * (tdpf_loss + cupm_loss)
+            + self.branch_loss_weight * (tapf_loss + rapm_loss)
             + self.router_loss_weight * router_loss
             + self.prior_loss_weight * prior_loss
             + self.regret_loss_weight * regret_loss
         )
 
-        tdpf_prediction = tdpf_logits.argmax(1)
-        cupm_prediction = cupm_logits.argmax(1)
+        tapf_prediction = tapf_logits.argmax(1)
+        rapm_prediction = rapm_logits.argmax(1)
         fused_prediction = fused_logits.argmax(1)
-        tdpf_correct = tdpf_prediction.eq(query_targets)
-        cupm_correct = cupm_prediction.eq(query_targets)
+        tapf_correct = tapf_prediction.eq(query_targets)
+        rapm_correct = rapm_prediction.eq(query_targets)
         fused_correct = fused_prediction.eq(query_targets)
         self.last_metrics = {
             "loss": total_loss.detach(),
             "fused_loss": fused_loss.detach(),
-            "tdpf_loss": tdpf_loss.detach(),
-            "cupm_loss": cupm_loss.detach(),
+            "tapf_loss": tapf_loss.detach(),
+            "rapm_loss": rapm_loss.detach(),
             "router_loss": router_loss.detach(),
             "prior_loss": prior_loss.detach(),
             "regret_loss": regret_loss.detach(),
             "accuracy": fused_correct.float().mean().detach(),
-            "tdpf_accuracy": tdpf_correct.float().mean().detach(),
-            "cupm_accuracy": cupm_correct.float().mean().detach(),
-            "oracle_accuracy": (tdpf_correct | cupm_correct).float().mean().detach(),
-            "disagreement": tdpf_prediction.ne(cupm_prediction).float().mean().detach(),
+            "tapf_accuracy": tapf_correct.float().mean().detach(),
+            "rapm_accuracy": rapm_correct.float().mean().detach(),
+            "oracle_accuracy": (tapf_correct | rapm_correct).float().mean().detach(),
+            "disagreement": tapf_prediction.ne(rapm_prediction).float().mean().detach(),
             "router_alpha": alpha.mean().detach(),
             "router_target": route_target.mean().detach(),
             "router_correction": correction.mean().detach(),
@@ -429,18 +429,18 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
             "evidence_strength": evidence_strength.mean().detach(),
             "gate_mean": encoded["gate_mean"].detach(),
             "mean_variance": encoded["variance"].mean().detach(),
-            "tdpf_temperature": self.log_tdpf_temperature.exp().detach(),
-            "cupm_temperature": self.log_cupm_temperature.exp().detach(),
+            "tapf_temperature": self.log_tapf_temperature.exp().detach(),
+            "rapm_temperature": self.log_rapm_temperature.exp().detach(),
         }
         return {
             "loss": total_loss,
             "accuracy": fused_correct.float().mean(),
             "logits": fused_logits,
             "targets": query_targets,
-            "tdpf_logits": tdpf_logits,
-            "cupm_logits": cupm_logits,
-            "tdpf_predictions": tdpf_prediction,
-            "cupm_predictions": cupm_prediction,
+            "tapf_logits": tapf_logits,
+            "rapm_logits": rapm_logits,
+            "tapf_predictions": tapf_prediction,
+            "rapm_predictions": rapm_prediction,
             "fused_predictions": fused_prediction,
             "alpha": alpha,
             "route_target": route_target,
@@ -449,15 +449,15 @@ class ShotAwareReliabilityConstrainedFusion(nn.Module):
 
     def parameter_report(self):
         groups = {
-            "tdpf_projection": self.tdpf_projection,
-            "cupm_projection": self.cupm_projection,
-            "tdpf_expert": nn.ModuleList([
+            "tapf_projection": self.tapf_projection,
+            "rapm_projection": self.rapm_projection,
+            "tapf_expert": nn.ModuleList([
                 self.task_gate,
                 self.ppl_reduce,
                 self.xpl_reduce,
                 self.interaction_expand,
             ]),
-            "cupm_expert": self.uncertainty_head,
+            "rapm_expert": self.uncertainty_head,
             "router": self.router,
         }
         report = {

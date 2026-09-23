@@ -22,7 +22,7 @@ from .utils import load_checkpoint
 
 @dataclass(frozen=True)
 class BaselineEpisode:
-    """Frozen base-model evidence exposed to the PAUM relation expert."""
+    """Frozen base-model evidence exposed to the APEL relation expert."""
 
     classes: torch.Tensor
     support_indices: tuple[torch.Tensor, ...]
@@ -31,17 +31,17 @@ class BaselineEpisode:
     query_targets: torch.Tensor
     ppl_map: torch.Tensor
     xpl_map: torch.Tensor
-    tdpf_embedding: torch.Tensor
-    tdpf_ppl_embedding: torch.Tensor
-    tdpf_xpl_embedding: torch.Tensor
-    cupm_embedding: torch.Tensor
-    cupm_variance: torch.Tensor
+    tapf_embedding: torch.Tensor
+    tapf_ppl_embedding: torch.Tensor
+    tapf_xpl_embedding: torch.Tensor
+    rapm_embedding: torch.Tensor
+    rapm_variance: torch.Tensor
     ppl_embedding: torch.Tensor
     xpl_embedding: torch.Tensor
     fisher_score: torch.Tensor
     channel_gate: torch.Tensor
-    tdpf_logits: torch.Tensor
-    cupm_logits: torch.Tensor
+    tapf_logits: torch.Tensor
+    rapm_logits: torch.Tensor
     original_logits: torch.Tensor
     original_alpha: torch.Tensor
     router_features: torch.Tensor
@@ -64,14 +64,14 @@ class BaselineEpisode:
         if self.ppl_map.ndim != 4 or self.ppl_map.shape != self.xpl_map.shape:
             raise ValueError("PPL/XPL maps must share shape [images, C, H, W]")
         image_count, channels = self.ppl_map.shape[:2]
-        embedding_shape = self.tdpf_embedding.shape
+        embedding_shape = self.tapf_embedding.shape
         if len(embedding_shape) != 2 or embedding_shape[0] != image_count:
-            raise ValueError("tdpf_embedding has an invalid shape")
+            raise ValueError("tapf_embedding has an invalid shape")
         aligned = (
-            self.tdpf_ppl_embedding,
-            self.tdpf_xpl_embedding,
-            self.cupm_embedding,
-            self.cupm_variance,
+            self.tapf_ppl_embedding,
+            self.tapf_xpl_embedding,
+            self.rapm_embedding,
+            self.rapm_variance,
             self.ppl_embedding,
             self.xpl_embedding,
         )
@@ -83,7 +83,7 @@ class BaselineEpisode:
             raise ValueError("channel_gate must have one value per channel")
         query_count = int(self.flat_query_indices.numel())
         expected_logits = (query_count, self.ways)
-        logits = (self.tdpf_logits, self.cupm_logits, self.original_logits)
+        logits = (self.tapf_logits, self.rapm_logits, self.original_logits)
         if any(tuple(value.shape) != expected_logits for value in logits):
             raise ValueError("all branch logits must be [queries, ways]")
         if tuple(self.original_alpha.shape) != (query_count,):
@@ -106,7 +106,7 @@ class BaselineEpisode:
         tensors = (
             self.ppl_map,
             self.xpl_map,
-            self.tdpf_embedding,
+            self.tapf_embedding,
             *aligned,
             self.fisher_score,
             self.channel_gate,
@@ -117,8 +117,8 @@ class BaselineEpisode:
         )
         if not all(bool(torch.isfinite(value).all()) for value in tensors):
             raise ValueError("baseline state must contain finite tensors")
-        if bool((self.cupm_variance <= 0.0).any()):
-            raise ValueError("CUPM variance must be positive")
+        if bool((self.rapm_variance <= 0.0).any()):
+            raise ValueError("RAPM variance must be positive")
         return self
 
 
@@ -151,9 +151,9 @@ def load_frozen_base_model(
     checkpoint_path: str | Path, *, device: torch.device
 ) -> FrozenBaseModel:
     checkpoint = load_checkpoint(checkpoint_path, map_location=device)
-    if checkpoint.get("model") != "SRCF_TDPF_CUPM":
+    if checkpoint.get("model") != "SRCF_TAPF_RAPM":
         raise RuntimeError(
-            "PAUM requires SRCF_TDPF_CUPM, got {!r}".format(
+            "APEL requires SRCF_TAPF_RAPM, got {!r}".format(
                 checkpoint.get("model")
             )
         )
@@ -191,17 +191,17 @@ def extract_baseline_episode(
     query_targets = torch.cat(query_targets)
     flat_query_indices = torch.cat(query_indices)
     encoded = module._encode_experts(ppl_map, xpl_map, support_indices)
-    tdpf_logits = module._euclidean_logits(
-        encoded["tdpf"], support_indices, query_indices
+    tapf_logits = module._euclidean_logits(
+        encoded["tapf"], support_indices, query_indices
     )
-    cupm_logits = module._uncertainty_logits(
-        encoded["cupm"], encoded["variance"], support_indices, query_indices
+    rapm_logits = module._uncertainty_logits(
+        encoded["rapm"], encoded["variance"], support_indices, query_indices
     )
-    tdpf_probability = F.softmax(tdpf_logits, dim=1)
-    cupm_probability = F.softmax(cupm_logits, dim=1)
+    tapf_probability = F.softmax(tapf_logits, dim=1)
+    rapm_probability = F.softmax(rapm_logits, dim=1)
     router_features = module._router_features(
-        tdpf_logits,
-        cupm_logits,
+        tapf_logits,
+        rapm_logits,
         encoded,
         support_indices,
         query_indices,
@@ -218,11 +218,11 @@ def extract_baseline_episode(
         module._shot_prior(n_support) + radius,
     )
     original_logits = (
-        (1.0 - original_alpha.unsqueeze(1)) * tdpf_probability
-        + original_alpha.unsqueeze(1) * cupm_probability
+        (1.0 - original_alpha.unsqueeze(1)) * tapf_probability
+        + original_alpha.unsqueeze(1) * rapm_probability
     ).clamp_min(module.eps).log()
-    tdpf_ppl_embedding = module.tdpf_projection(module.pool(ppl_map).flatten(1))
-    tdpf_xpl_embedding = module.tdpf_projection(module.pool(xpl_map).flatten(1))
+    tapf_ppl_embedding = module.tapf_projection(module.pool(ppl_map).flatten(1))
+    tapf_xpl_embedding = module.tapf_projection(module.pool(xpl_map).flatten(1))
     fisher_score = module._task_fisher_score(ppl_map, xpl_map, support_indices)
     channel_gate = torch.sigmoid(module.task_gate(fisher_score)).flatten()
     return BaselineEpisode(
@@ -233,17 +233,17 @@ def extract_baseline_episode(
         query_targets=query_targets,
         ppl_map=ppl_map,
         xpl_map=xpl_map,
-        tdpf_embedding=encoded["tdpf"],
-        tdpf_ppl_embedding=tdpf_ppl_embedding,
-        tdpf_xpl_embedding=tdpf_xpl_embedding,
-        cupm_embedding=encoded["cupm"],
-        cupm_variance=encoded["variance"],
+        tapf_embedding=encoded["tapf"],
+        tapf_ppl_embedding=tapf_ppl_embedding,
+        tapf_xpl_embedding=tapf_xpl_embedding,
+        rapm_embedding=encoded["rapm"],
+        rapm_variance=encoded["variance"],
         ppl_embedding=encoded["ppl"],
         xpl_embedding=encoded["xpl"],
         fisher_score=fisher_score,
         channel_gate=channel_gate,
-        tdpf_logits=tdpf_logits,
-        cupm_logits=cupm_logits,
+        tapf_logits=tapf_logits,
+        rapm_logits=rapm_logits,
         original_logits=original_logits,
         original_alpha=original_alpha,
         router_features=router_features,
@@ -252,29 +252,29 @@ def extract_baseline_episode(
 
 
 @dataclass(frozen=True)
-class PAUMFrozenSRCF:
+class APELFrozenSRCF:
     backbone: FGKMultiScaleResNet18Backbone
     module: ShotAwareReliabilityConstrainedFusion
     checkpoint: dict[str, Any]
 
 
 @dataclass(frozen=True)
-class PAUMPreparedEpisode:
+class APELPreparedEpisode:
     baseline: BaselineEpisode
     ppl_features: MultiScaleFeatureMaps
     xpl_features: MultiScaleFeatureMaps
 
 
-def load_paum_frozen_srcf(
+def load_apel_frozen_srcf(
     checkpoint_path: str | Path, *, device: torch.device
-) -> PAUMFrozenSRCF:
+) -> APELFrozenSRCF:
     source = load_frozen_base_model(checkpoint_path, device=device)
     backbone = FGKMultiScaleResNet18Backbone().to(device)
     backbone.load_state_dict(source.backbone.state_dict(), strict=True)
     backbone.eval()
     for parameter in backbone.parameters():
         parameter.requires_grad_(False)
-    return PAUMFrozenSRCF(
+    return APELFrozenSRCF(
         backbone=backbone,
         module=source.module,
         checkpoint=source.checkpoint,
@@ -282,12 +282,12 @@ def load_paum_frozen_srcf(
 
 
 @torch.no_grad()
-def prepare_paum_episode(
-    frozen: PAUMFrozenSRCF,
+def prepare_apel_episode(
+    frozen: APELFrozenSRCF,
     images: torch.Tensor,
     labels: torch.Tensor,
     shots: int,
-) -> PAUMPreparedEpisode:
+) -> APELPreparedEpisode:
     ppl_features = frozen.backbone.forward_multiscale(images[:, 3:6])
     xpl_features = frozen.backbone.forward_multiscale(images[:, 0:3])
     baseline = extract_baseline_episode(
@@ -297,7 +297,7 @@ def prepare_paum_episode(
         labels,
         shots,
     )
-    return PAUMPreparedEpisode(
+    return APELPreparedEpisode(
         baseline=baseline,
         ppl_features=ppl_features,
         xpl_features=xpl_features,
@@ -311,22 +311,22 @@ def fixed_fusion_logits_for_indices(
     support_indices: Sequence[torch.Tensor],
     query_indices: Sequence[torch.Tensor],
 ) -> torch.Tensor:
-    # TDPF's Fisher gate is support-conditioned. Recompute every fold so the
+    # TAPF's Fisher gate is support-conditioned. Recompute every fold so the
     # held-out sample cannot influence the representation used to predict it.
     encoded = module._encode_experts(
         state.ppl_map,
         state.xpl_map,
         support_indices,
     )
-    tdpf_logits = module._euclidean_logits(
-        encoded["tdpf"], support_indices, query_indices
+    tapf_logits = module._euclidean_logits(
+        encoded["tapf"], support_indices, query_indices
     )
-    cupm_logits = module._uncertainty_logits(
-        encoded["cupm"], encoded["variance"], support_indices, query_indices
+    rapm_logits = module._uncertainty_logits(
+        encoded["rapm"], encoded["variance"], support_indices, query_indices
     )
     features = module._router_features(
-        tdpf_logits,
-        cupm_logits,
+        tapf_logits,
+        rapm_logits,
         encoded,
         support_indices,
         query_indices,
@@ -343,8 +343,8 @@ def fixed_fusion_logits_for_indices(
         module._shot_prior(int(support_indices[0].numel())) + radius,
     )
     probability = (
-        (1.0 - alpha.unsqueeze(1)) * F.softmax(tdpf_logits, dim=1)
-        + alpha.unsqueeze(1) * F.softmax(cupm_logits, dim=1)
+        (1.0 - alpha.unsqueeze(1)) * F.softmax(tapf_logits, dim=1)
+        + alpha.unsqueeze(1) * F.softmax(rapm_logits, dim=1)
     ).clamp_min(module.eps)
     return probability.log()
 

@@ -1,10 +1,10 @@
-# PAUM-RockFSL
+# APEL-RockFSL
 
 ## Repository structure
 
 ```text
-PAUM_RockFSL_GitHub/
-├── paum_rock_fsl/
+APEL_RockFSL_GitHub/
+├── apel_rock_fsl/
 ├── train_model.py
 ├── run_5way_1shot.py
 ├── run_5way_5shot.py

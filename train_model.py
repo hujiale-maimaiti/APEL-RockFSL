@@ -15,10 +15,10 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from paum_rock_fsl.base_fusion_model import ShotAwareReliabilityConstrainedFusion
-from paum_rock_fsl.dataset import NJURockPairDataset
-from paum_rock_fsl.deterministic_episode_sampler import DeterministicEpisodeSampler
-from paum_rock_fsl.resnet_backbone import (
+from apel_rock_fsl.base_fusion_model import ShotAwareReliabilityConstrainedFusion
+from apel_rock_fsl.dataset import NJURockPairDataset
+from apel_rock_fsl.deterministic_episode_sampler import DeterministicEpisodeSampler
+from apel_rock_fsl.resnet_backbone import (
     FGKMiniResNet18Backbone,
     load_fgk_resnet18_backbone,
 )
@@ -210,35 +210,35 @@ def evaluate(loader, backbone, module, device, n_support, description):
             losses.append(float(result["loss"].item()))
             accuracies.append(float(result["accuracy"].item()))
             targets = result["targets"].detach().cpu().tolist()
-            tdpf_predictions = result["tdpf_predictions"].detach().cpu().tolist()
-            cupm_predictions = result["cupm_predictions"].detach().cpu().tolist()
+            tapf_predictions = result["tapf_predictions"].detach().cpu().tolist()
+            rapm_predictions = result["rapm_predictions"].detach().cpu().tolist()
             fused_predictions = result["fused_predictions"].detach().cpu().tolist()
             alphas = result["alpha"].detach().cpu().tolist()
             for query, values in enumerate(
                 zip(
                     targets,
-                    tdpf_predictions,
-                    cupm_predictions,
+                    tapf_predictions,
+                    rapm_predictions,
                     fused_predictions,
                     alphas,
                 )
             ):
-                target, tdpf_prediction, cupm_prediction, fused_prediction, alpha = values
+                target, tapf_prediction, rapm_prediction, fused_prediction, alpha = values
                 diagnostics.append({
                     "episode": episode,
                     "query": query,
                     "target": target,
-                    "tdpf_prediction": tdpf_prediction,
-                    "cupm_prediction": cupm_prediction,
+                    "tapf_prediction": tapf_prediction,
+                    "rapm_prediction": rapm_prediction,
                     "fused_prediction": fused_prediction,
-                    "tdpf_correct": int(tdpf_prediction == target),
-                    "cupm_correct": int(cupm_prediction == target),
+                    "tapf_correct": int(tapf_prediction == target),
+                    "rapm_correct": int(rapm_prediction == target),
                     "fused_correct": int(fused_prediction == target),
                     "oracle_correct": int(
-                        tdpf_prediction == target or cupm_prediction == target
+                        tapf_prediction == target or rapm_prediction == target
                     ),
-                    "experts_disagree": int(tdpf_prediction != cupm_prediction),
-                    "cupm_weight": alpha,
+                    "experts_disagree": int(tapf_prediction != rapm_prediction),
+                    "rapm_weight": alpha,
                 })
     return (
         float(np.mean(losses)),
@@ -252,7 +252,7 @@ def save_state(path, backbone, module, epoch, val_accuracy, args):
     torch.save({
         "backbone": backbone.state_dict(),
         "srcf_module": module.state_dict(),
-        "model": "SRCF_TDPF_CUPM",
+        "model": "SRCF_TAPF_RAPM",
         "epoch": epoch,
         "val_accuracy": val_accuracy,
         "config": vars(args),
@@ -331,16 +331,16 @@ def train(args, loaders, backbone, module, device, experiment_root):
         )
         row = {
             "epoch": epoch,
-            "model": "SRCF_TDPF_CUPM",
+            "model": "SRCF_TAPF_RAPM",
             "train_loss": float(np.mean(train_losses)),
             "train_accuracy": float(np.mean(train_accuracies)),
             "val_loss": val_loss,
             "val_accuracy": val_accuracy,
-            "val_tdpf_accuracy": float(np.mean([
-                item["tdpf_correct"] for item in val_diagnostics
+            "val_tapf_accuracy": float(np.mean([
+                item["tapf_correct"] for item in val_diagnostics
             ])),
-            "val_cupm_accuracy": float(np.mean([
-                item["cupm_correct"] for item in val_diagnostics
+            "val_rapm_accuracy": float(np.mean([
+                item["rapm_correct"] for item in val_diagnostics
             ])),
             "val_oracle_accuracy": float(np.mean([
                 item["oracle_correct"] for item in val_diagnostics
@@ -445,11 +445,11 @@ def save_test_results(
         writer.writerows(diagnostics)
 
     complementarity = {
-        "tdpf_accuracy": float(np.mean([
-            item["tdpf_correct"] for item in diagnostics
+        "tapf_accuracy": float(np.mean([
+            item["tapf_correct"] for item in diagnostics
         ])),
-        "cupm_accuracy": float(np.mean([
-            item["cupm_correct"] for item in diagnostics
+        "rapm_accuracy": float(np.mean([
+            item["rapm_correct"] for item in diagnostics
         ])),
         "fused_accuracy_query_level": float(np.mean([
             item["fused_correct"] for item in diagnostics
@@ -460,21 +460,21 @@ def save_test_results(
         "disagreement_rate": float(np.mean([
             item["experts_disagree"] for item in diagnostics
         ])),
-        "tdpf_only_correct": float(np.mean([
-            item["tdpf_correct"] and not item["cupm_correct"]
+        "tapf_only_correct": float(np.mean([
+            item["tapf_correct"] and not item["rapm_correct"]
             for item in diagnostics
         ])),
-        "cupm_only_correct": float(np.mean([
-            item["cupm_correct"] and not item["tdpf_correct"]
+        "rapm_only_correct": float(np.mean([
+            item["rapm_correct"] and not item["tapf_correct"]
             for item in diagnostics
         ])),
-        "mean_cupm_weight": float(np.mean([
-            item["cupm_weight"] for item in diagnostics
+        "mean_rapm_weight": float(np.mean([
+            item["rapm_weight"] for item in diagnostics
         ])),
     }
 
     protocol = {
-        "model": "SRCF_TDPF_CUPM",
+        "model": "SRCF_TAPF_RAPM",
         "branch_loss_weight": args.branch_loss_weight,
         "router_loss_weight": args.router_loss_weight,
         "prior_loss_weight": args.prior_loss_weight,

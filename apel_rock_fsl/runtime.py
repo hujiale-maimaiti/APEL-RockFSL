@@ -5,39 +5,39 @@ from typing import NamedTuple
 import torch
 
 from .baseline_adapter import (
-    PAUMFrozenSRCF,
-    PAUMPreparedEpisode,
+    APELFrozenSRCF,
+    APELPreparedEpisode,
     crossfit_base_support,
-    prepare_paum_episode,
+    prepare_apel_episode,
 )
 from .evidence_fusion import EvidenceFusionOutput
 from .local_descriptors import LocalDescriptorStreams
 from .losses import ComplementaryLossOutput
-from .model import PAUMARRCModel
-from .relation_expert import PAUMRelationExpertOutput
+from .model import APELQACSModel
+from .relation_expert import APELRelationExpertOutput
 from .support_reliability import SupportReliabilitySummary
 
 
-class PAUMEpisodeOutput(NamedTuple):
-    prepared: PAUMPreparedEpisode
+class APELEpisodeOutput(NamedTuple):
+    prepared: APELPreparedEpisode
     descriptors: LocalDescriptorStreams
-    relation: PAUMRelationExpertOutput
+    relation: APELRelationExpertOutput
     support_reliability: SupportReliabilitySummary
     fusion: EvidenceFusionOutput
     loss: ComplementaryLossOutput | None
 
 
-def run_paum_episode(
-    frozen: PAUMFrozenSRCF,
-    model: PAUMARRCModel,
+def run_apel_episode(
+    frozen: APELFrozenSRCF,
+    model: APELQACSModel,
     images: torch.Tensor,
     labels: torch.Tensor,
     shots: int,
     *,
     compute_support_reliability: bool = True,
     compute_loss: bool = True,
-) -> PAUMEpisodeOutput:
-    prepared = prepare_paum_episode(frozen, images, labels, shots)
+) -> APELEpisodeOutput:
+    prepared = prepare_apel_episode(frozen, images, labels, shots)
     baseline = prepared.baseline
     descriptors = model.encode_descriptors(
         prepared.ppl_features,
@@ -82,7 +82,7 @@ def run_paum_episode(
         model.loss_function(fusion, baseline.query_targets)
         if compute_loss else None
     )
-    return PAUMEpisodeOutput(
+    return APELEpisodeOutput(
         prepared=prepared,
         descriptors=descriptors,
         relation=relation,

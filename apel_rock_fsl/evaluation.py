@@ -13,22 +13,22 @@ import torch
 from torch.utils.data import DataLoader
 
 from . import (
-    ARRCConfig,
+    QACSConfig,
     NJURockSynchronizedPairDataset,
-    PAUMARRCModel,
+    APELQACSModel,
     SynchronizedPairTransform,
-    load_paum_frozen_srcf,
-    run_paum_episode,
+    load_apel_frozen_srcf,
+    run_apel_episode,
 )
 from .fixed_episode_sampler import FixedEpisodeBatchSampler
 from .utils import load_checkpoint, seed_everything, seed_worker
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate a fixed PAUM-RockFSL checkpoint")
+    parser = argparse.ArgumentParser(description="Evaluate a fixed APEL-RockFSL checkpoint")
     parser.add_argument("--dataset_root", required=True)
     parser.add_argument("--base_checkpoint", required=True)
-    parser.add_argument("--arrc_checkpoint", required=True)
+    parser.add_argument("--qacs_checkpoint", required=True)
     parser.add_argument("--output_root", required=True)
     parser.add_argument("--test_split", default="meta_test")
     parser.add_argument("--ways", type=int, default=5)
@@ -97,7 +97,7 @@ def paired_protonet_logits(baseline):
     The positive scale is immaterial to the predicted class, so no additional
     trainable parameter or test-time calibration is introduced here.
     """
-    embedding = baseline.cupm_embedding
+    embedding = baseline.rapm_embedding
     prototypes = torch.stack([
         embedding[index].mean(dim=0)
         for index in baseline.support_indices
@@ -113,7 +113,7 @@ def enforce_meta_test_policy(
     gate, protocol, checkpoint, allow_completed_test_replay=False
 ):
     if int(gate.get("validation_bank_count", 0)) < 3:
-        raise RuntimeError("ARRC go/no-go used fewer than three validation banks")
+        raise RuntimeError("QACS go/no-go used fewer than three validation banks")
     if checkpoint.get("checkpoint_role") != "best":
         raise RuntimeError("meta_test requires the frozen selected best checkpoint")
     already_accessed = protocol.get("meta_test_accessed") is True
@@ -172,26 +172,26 @@ def main():
     }
     existing = [path.name for path in output_paths.values() if path.exists()]
     if existing:
-        raise FileExistsError("refusing to overwrite ARRC test outputs: " + ", ".join(existing))
+        raise FileExistsError("refusing to overwrite QACS test outputs: " + ", ".join(existing))
 
     base_path = Path(args.base_checkpoint).resolve()
-    arrc_path = Path(args.arrc_checkpoint).resolve()
-    checkpoint = load_checkpoint(arrc_path, map_location=device)
-    if "arrc" not in checkpoint:
-        raise RuntimeError("not a PAUM-RockFSL checkpoint")
+    qacs_path = Path(args.qacs_checkpoint).resolve()
+    checkpoint = load_checkpoint(qacs_path, map_location=device)
+    if "qacs" not in checkpoint:
+        raise RuntimeError("not a APEL-RockFSL checkpoint")
     if checkpoint.get("base_checkpoint_sha256") != file_sha256(base_path):
-        raise RuntimeError("base checkpoint hash does not match ARRC training")
-    gate_path = arrc_path.parent / "go_no_go.json"
-    protocol_path = arrc_path.parent / "protocol.json"
+        raise RuntimeError("base checkpoint hash does not match QACS training")
+    gate_path = qacs_path.parent / "go_no_go.json"
+    protocol_path = qacs_path.parent / "protocol.json"
     gate = None
     protocol = None
     completed_test_replay = False
     completion_evidence = None
     if args.test_split == "meta_test":
         if not gate_path.is_file():
-            raise RuntimeError("missing go/no-go decision beside ARRC checkpoint")
+            raise RuntimeError("missing go/no-go decision beside QACS checkpoint")
         if not protocol_path.is_file():
-            raise RuntimeError("missing protocol.json beside ARRC checkpoint")
+            raise RuntimeError("missing protocol.json beside QACS checkpoint")
         gate = json.loads(gate_path.read_text(encoding="utf-8"))
         protocol = json.loads(protocol_path.read_text(encoding="utf-8"))
         if (
@@ -200,7 +200,7 @@ def main():
             and protocol.get("meta_test_completed") is not True
         ):
             completion_evidence = completed_test_artifact_evidence(
-                arrc_path.parent, args.ways, args.shots
+                qacs_path.parent, args.ways, args.shots
             )
             if completion_evidence is not None:
                 protocol = dict(protocol)
@@ -216,12 +216,12 @@ def main():
         int(trained.get("ways", args.ways)),
         int(trained.get("shots", args.shots)),
     ) != (args.ways, args.shots):
-        raise RuntimeError("ARRC checkpoint protocol differs from requested test")
+        raise RuntimeError("QACS checkpoint protocol differs from requested test")
 
-    frozen = load_paum_frozen_srcf(base_path, device=device)
-    config = ARRCConfig(**checkpoint["arrc_config"])
-    model = PAUMARRCModel(config).to(device)
-    model.load_state_dict(checkpoint["arrc"], strict=True)
+    frozen = load_apel_frozen_srcf(base_path, device=device)
+    config = QACSConfig(**checkpoint["qacs_config"])
+    model = APELQACSModel(config).to(device)
+    model.load_state_dict(checkpoint["qacs"], strict=True)
     model.eval()
     dataset = NJURockSynchronizedPairDataset(
         args.dataset_root,
@@ -313,21 +313,21 @@ def main():
         )
 
     totals = {name: 0 for name in (
-        "queries", "protonet_correct", "tdpf_correct", "cupm_correct",
-        "base_correct", "relation_correct", "arrc_correct",
+        "queries", "protonet_correct", "tapf_correct", "rapm_correct",
+        "base_correct", "relation_correct", "qacs_correct",
         "diagnostic_oracle_correct", "rescues", "damages", "beneficial_queries",
         "harmful_queries",
     )}
     episode_rows = []
     query_rows = []
     episode_accuracy = {name: [] for name in (
-        "protonet", "tdpf", "cupm", "base", "relation", "arrc"
+        "protonet", "tapf", "rapm", "base", "relation", "qacs"
     )}
     with torch.no_grad():
         for episode_id, (images, labels) in enumerate(loader):
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
-            output = run_paum_episode(
+            output = run_apel_episode(
                 frozen,
                 model,
                 images,
@@ -339,39 +339,39 @@ def main():
             protonet_prediction = paired_protonet_logits(
                 output.prepared.baseline
             ).argmax(1)
-            tdpf_prediction = output.prepared.baseline.tdpf_logits.argmax(1)
-            cupm_prediction = output.prepared.baseline.cupm_logits.argmax(1)
+            tapf_prediction = output.prepared.baseline.tapf_logits.argmax(1)
+            rapm_prediction = output.prepared.baseline.rapm_logits.argmax(1)
             base_prediction = output.fusion.base_logits.argmax(1)
             relation_prediction = output.fusion.relation_logits.argmax(1)
-            arrc_prediction = output.fusion.logits.argmax(1)
+            qacs_prediction = output.fusion.logits.argmax(1)
             episode_classes = output.prepared.baseline.classes
             true_classes = episode_classes[targets]
             protonet_pred_classes = episode_classes[protonet_prediction]
-            tdpf_pred_classes = episode_classes[tdpf_prediction]
-            cupm_pred_classes = episode_classes[cupm_prediction]
+            tapf_pred_classes = episode_classes[tapf_prediction]
+            rapm_pred_classes = episode_classes[rapm_prediction]
             base_pred_classes = episode_classes[base_prediction]
             relation_pred_classes = episode_classes[relation_prediction]
-            arrc_pred_classes = episode_classes[arrc_prediction]
+            qacs_pred_classes = episode_classes[qacs_prediction]
             protonet_correct = protonet_prediction.eq(targets)
-            tdpf_correct = tdpf_prediction.eq(targets)
-            cupm_correct = cupm_prediction.eq(targets)
+            tapf_correct = tapf_prediction.eq(targets)
+            rapm_correct = rapm_prediction.eq(targets)
             base_correct = base_prediction.eq(targets)
             relation_correct = relation_prediction.eq(targets)
-            arrc_correct = arrc_prediction.eq(targets)
+            qacs_correct = qacs_prediction.eq(targets)
             diagnostic_oracle_correct = base_correct | relation_correct
-            rescued = ~base_correct & arrc_correct
-            damaged = base_correct & ~arrc_correct
+            rescued = ~base_correct & qacs_correct
+            damaged = base_correct & ~qacs_correct
             beneficial = ~base_correct & relation_correct
             harmful = base_correct & ~relation_correct
             query_count = int(targets.numel())
             values = {
                 "queries": query_count,
                 "protonet_correct": int(protonet_correct.sum()),
-                "tdpf_correct": int(tdpf_correct.sum()),
-                "cupm_correct": int(cupm_correct.sum()),
+                "tapf_correct": int(tapf_correct.sum()),
+                "rapm_correct": int(rapm_correct.sum()),
                 "base_correct": int(base_correct.sum()),
                 "relation_correct": int(relation_correct.sum()),
-                "arrc_correct": int(arrc_correct.sum()),
+                "qacs_correct": int(qacs_correct.sum()),
                 "diagnostic_oracle_correct": int(
                     diagnostic_oracle_correct.sum()
                 ),
@@ -384,22 +384,22 @@ def main():
                 totals[key] += value
             for name, correct in (
                 ("protonet", protonet_correct),
-                ("tdpf", tdpf_correct),
-                ("cupm", cupm_correct),
+                ("tapf", tapf_correct),
+                ("rapm", rapm_correct),
                 ("base", base_correct),
                 ("relation", relation_correct),
-                ("arrc", arrc_correct),
+                ("qacs", qacs_correct),
             ):
                 episode_accuracy[name].append(float(correct.float().mean()))
             episode_rows.append({
                 "episode": episode_id,
                 **values,
                 "protonet_accuracy": float(protonet_correct.float().mean()),
-                "tdpf_accuracy": float(tdpf_correct.float().mean()),
-                "cupm_accuracy": float(cupm_correct.float().mean()),
+                "tapf_accuracy": float(tapf_correct.float().mean()),
+                "rapm_accuracy": float(rapm_correct.float().mean()),
                 "base_accuracy": float(base_correct.float().mean()),
                 "relation_accuracy": float(relation_correct.float().mean()),
-                "arrc_accuracy": float(arrc_correct.float().mean()),
+                "qacs_accuracy": float(qacs_correct.float().mean()),
                 "diagnostic_oracle_accuracy": float(
                     diagnostic_oracle_correct.float().mean()
                 ),
@@ -425,28 +425,28 @@ def main():
                     "query": query_id,
                     "target": int(targets[query_id]),
                     "protonet_prediction": int(protonet_prediction[query_id]),
-                    "tdpf_prediction": int(tdpf_prediction[query_id]),
-                    "cupm_prediction": int(cupm_prediction[query_id]),
+                    "tapf_prediction": int(tapf_prediction[query_id]),
+                    "rapm_prediction": int(rapm_prediction[query_id]),
                     "base_prediction": int(base_prediction[query_id]),
                     "relation_prediction": int(relation_prediction[query_id]),
-                    "arrc_prediction": int(arrc_prediction[query_id]),
+                    "qacs_prediction": int(qacs_prediction[query_id]),
                     "true_class": int(true_classes[query_id]),
                     "protonet_pred_class": int(
                         protonet_pred_classes[query_id]
                     ),
-                    "tdpf_pred_class": int(tdpf_pred_classes[query_id]),
-                    "cupm_pred_class": int(cupm_pred_classes[query_id]),
+                    "tapf_pred_class": int(tapf_pred_classes[query_id]),
+                    "rapm_pred_class": int(rapm_pred_classes[query_id]),
                     "base_pred_class": int(base_pred_classes[query_id]),
                     "relation_pred_class": int(
                         relation_pred_classes[query_id]
                     ),
-                    "arrc_pred_class": int(arrc_pred_classes[query_id]),
+                    "qacs_pred_class": int(qacs_pred_classes[query_id]),
                     "protonet_correct": int(protonet_correct[query_id]),
-                    "tdpf_correct": int(tdpf_correct[query_id]),
-                    "cupm_correct": int(cupm_correct[query_id]),
+                    "tapf_correct": int(tapf_correct[query_id]),
+                    "rapm_correct": int(rapm_correct[query_id]),
                     "base_correct": int(base_correct[query_id]),
                     "relation_correct": int(relation_correct[query_id]),
-                    "arrc_correct": int(arrc_correct[query_id]),
+                    "qacs_correct": int(qacs_correct[query_id]),
                     "diagnostic_oracle_correct": int(
                         diagnostic_oracle_correct[query_id]
                     ),
@@ -484,18 +484,18 @@ def main():
     query_count = max(totals["queries"], 1)
     accuracy = {
         "protonet": totals["protonet_correct"] / query_count,
-        "tdpf": totals["tdpf_correct"] / query_count,
-        "cupm": totals["cupm_correct"] / query_count,
+        "tapf": totals["tapf_correct"] / query_count,
+        "rapm": totals["rapm_correct"] / query_count,
         "base": totals["base_correct"] / query_count,
         "relation": totals["relation_correct"] / query_count,
-        "arrc": totals["arrc_correct"] / query_count,
+        "qacs": totals["qacs_correct"] / query_count,
         "diagnostic_oracle_upper_bound": (
             totals["diagnostic_oracle_correct"] / query_count
         ),
     }
     summary = {
-        "model": "PAUM_ROCK_FSL",
-        "display_model": "ProtoNet-TDPF-CUPM-ARRC",
+        "model": "APEL_ROCK_FSL",
+        "display_model": "ProtoNet-TAPF-RAPM-QACS",
         "ways": args.ways,
         "shots": args.shots,
         "queries_per_class": args.queries,
@@ -508,7 +508,7 @@ def main():
             for offset, (name, values) in enumerate(episode_accuracy.items())
         },
         "paired_net_gain_interval_95": bootstrap_interval(
-            np.asarray(episode_accuracy["arrc"])
+            np.asarray(episode_accuracy["qacs"])
             - np.asarray(episode_accuracy["base"]),
             args.bootstrap_samples,
             args.manual_seed + 100,
@@ -519,7 +519,7 @@ def main():
         ),
         "episode_fingerprint": sampler.fingerprint,
         "base_checkpoint": str(base_path),
-        "arrc_checkpoint": str(arrc_path),
+        "qacs_checkpoint": str(qacs_path),
         "go_no_go_passed": None if gate is None else bool(gate.get("passed")),
         "completed_test_replay": completed_test_replay,
         "completed_test_evidence": completion_evidence,
@@ -533,7 +533,7 @@ def main():
                 if completed_test_replay else None
             )
         ),
-        "arrc_parameters": model.parameter_report(),
+        "qacs_parameters": model.parameter_report(),
         **totals,
     }
     save_csv(output_paths["episodes"], episode_rows)
@@ -549,7 +549,7 @@ def main():
         protocol_path.write_text(
             json.dumps(protocol, indent=2), encoding="utf-8"
         )
-    print("Accuracy: {:.2f}%".format(100.0 * accuracy["arrc"]), flush=True)
+    print("Accuracy: {:.2f}%".format(100.0 * accuracy["qacs"]), flush=True)
 
 
 if __name__ == "__main__":

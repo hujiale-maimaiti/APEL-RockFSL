@@ -14,8 +14,8 @@ The code was verified with the following local environment:
 Using Conda:
 
 ```bash
-conda create -n paum-rockfsl python=3.9 -y
-conda activate paum-rockfsl
+conda create -n apel-rockfsl python=3.9 -y
+conda activate apel-rockfsl
 ```
 
 Alternatively, using `venv` on Windows:
@@ -47,7 +47,7 @@ The `--device cpu` option can be used for functional checks, but formal training
 ## 3. Verify the installation
 
 ```bash
-python -c "import torch, torchvision; import paum_rock_fsl; print(torch.__version__, torchvision.__version__, torch.cuda.is_available())"
+python -c "import torch, torchvision; import apel_rock_fsl; print(torch.__version__, torchvision.__version__, torch.cuda.is_available())"
 ```
 
-Run all commands from the repository root so that `paum_rock_fsl` can be imported without an additional installation step.
+Run all commands from the repository root so that `apel_rock_fsl` can be imported without an additional installation step.

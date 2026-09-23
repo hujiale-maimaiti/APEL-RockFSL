@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class ARRCConfig:
+class QACSConfig:
     descriptor_dim: int = 48
     fisher_rank: int = 16
     semantic_scale: float = 0.5

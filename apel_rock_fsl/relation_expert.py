@@ -22,7 +22,7 @@ from .uncertainty_similarity import (
 )
 
 
-class PAUMRelationExpertOutput(NamedTuple):
+class APELRelationExpertOutput(NamedTuple):
     relation: RelationLogitsOutput
     prototype_bank: DualStreamPrototypeBank
     selected: SelectedQueryDescriptors
@@ -30,8 +30,8 @@ class PAUMRelationExpertOutput(NamedTuple):
     aggregation: DualStreamBidirectionalAggregation
 
 
-class PAUMLocalRelationExpert(nn.Module):
-    """Complete support-built, query-independent PAUM relation expert."""
+class APELLocalRelationExpert(nn.Module):
+    """Complete support-built, query-independent APEL relation expert."""
 
     def __init__(
         self,
@@ -72,7 +72,7 @@ class PAUMLocalRelationExpert(nn.Module):
         descriptors: LocalDescriptorStreams,
         query_indices: Sequence[torch.Tensor],
         prototype_bank: DualStreamPrototypeBank,
-    ) -> PAUMRelationExpertOutput:
+    ) -> APELRelationExpertOutput:
         selected = self.query_selector(
             descriptors.common_tokens,
             descriptors.polarization_tokens,
@@ -86,7 +86,7 @@ class PAUMLocalRelationExpert(nn.Module):
             selected,
             descriptors.polarization_gate,
         )
-        return PAUMRelationExpertOutput(
+        return APELRelationExpertOutput(
             relation=relation,
             prototype_bank=prototype_bank,
             selected=selected,
@@ -99,7 +99,7 @@ class PAUMLocalRelationExpert(nn.Module):
         descriptors: LocalDescriptorStreams,
         support_indices: Sequence[torch.Tensor],
         query_indices: Sequence[torch.Tensor],
-    ) -> PAUMRelationExpertOutput:
+    ) -> APELRelationExpertOutput:
         prototype_bank = self.build_prototype_bank(
             descriptors, support_indices
         )

@@ -1,4 +1,4 @@
-"""PAUM few-shot rock thin-section classification package."""
+"""APEL few-shot rock thin-section classification package."""
 
 from .paired_dataset import NJURockSynchronizedPairDataset
 from .paired_transforms import SynchronizedPairTransform
@@ -32,8 +32,8 @@ from .relation_head import (
     RelationLogitsOutput,
 )
 from .relation_expert import (
-    PAUMLocalRelationExpert,
-    PAUMRelationExpertOutput,
+    APELLocalRelationExpert,
+    APELRelationExpertOutput,
 )
 from .support_reliability import (
     SupportCrossFitFold,
@@ -46,17 +46,17 @@ from .evidence_fusion import (
     AsymmetricRescueRiskFusion,
     EvidenceFusionOutput,
 )
-from .configuration import ARRCConfig
-from .model import PAUMARRCModel
+from .configuration import QACSConfig
+from .model import APELQACSModel
 from .baseline_adapter import (
-    PAUMFrozenSRCF,
-    PAUMPreparedEpisode,
+    APELFrozenSRCF,
+    APELPreparedEpisode,
     crossfit_base_support,
     fixed_fusion_logits_for_indices,
-    load_paum_frozen_srcf,
-    prepare_paum_episode,
+    load_apel_frozen_srcf,
+    prepare_apel_episode,
 )
-from .runtime import PAUMEpisodeOutput, run_paum_episode
+from .runtime import APELEpisodeOutput, run_apel_episode
 from .losses import (
     ComplementaryFusionLoss,
     ComplementaryLossOutput,
@@ -76,13 +76,13 @@ __all__ = [
     "LocalDescriptorStreams",
     "MultiScaleFeatureMaps",
     "NJURockSynchronizedPairDataset",
-    "PAUMLocalRelationExpert",
-    "PAUMARRCModel",
-    "ARRCConfig",
-    "PAUMFrozenSRCF",
-    "PAUMPreparedEpisode",
-    "PAUMEpisodeOutput",
-    "PAUMRelationExpertOutput",
+    "APELLocalRelationExpert",
+    "APELQACSModel",
+    "QACSConfig",
+    "APELFrozenSRCF",
+    "APELPreparedEpisode",
+    "APELEpisodeOutput",
+    "APELRelationExpertOutput",
     "EvidenceFusionOutput",
     "SelectedQueryDescriptors",
     "SupportCrossFitFold",
@@ -98,7 +98,7 @@ __all__ = [
     "balanced_leave_one_shot_out",
     "crossfit_base_support",
     "fixed_fusion_logits_for_indices",
-    "load_paum_frozen_srcf",
-    "prepare_paum_episode",
-    "run_paum_episode",
+    "load_apel_frozen_srcf",
+    "prepare_apel_episode",
+    "run_apel_episode",
 ]

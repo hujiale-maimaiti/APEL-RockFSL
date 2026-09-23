@@ -1,4 +1,4 @@
-from paum_rock_fsl.experiment_runner import main
+from apel_rock_fsl.experiment_runner import main
 
 
 if __name__ == "__main__":

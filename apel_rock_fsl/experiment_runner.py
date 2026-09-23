@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a formal PAUM-RockFSL experiment")
+    parser = argparse.ArgumentParser(description="Run a formal APEL-RockFSL experiment")
     parser.add_argument("--data_root", required=True)
     parser.add_argument("--base_checkpoint", required=True)
     parser.add_argument("--output_root", default="")
@@ -65,7 +65,7 @@ def main(*, ways: int, shots: int) -> None:
     train_command = [
         sys.executable,
         "-m",
-        "paum_rock_fsl.training",
+        "apel_rock_fsl.training",
         "--dataset_root",
         str(data_root),
         "--base_checkpoint",
@@ -110,12 +110,12 @@ def main(*, ways: int, shots: int) -> None:
     test_command = [
         sys.executable,
         "-m",
-        "paum_rock_fsl.evaluation",
+        "apel_rock_fsl.evaluation",
         "--dataset_root",
         str(data_root),
         "--base_checkpoint",
         str(base_checkpoint),
-        "--arrc_checkpoint",
+        "--qacs_checkpoint",
         str(output_root / "best_model.pth"),
         "--output_root",
         str(output_root),
